@@ -10,7 +10,7 @@ the accounts reported in:
 > matrix for New Jersey 2024 with methods and sources for other U.S. states.
 > *Scientific Data* (submitted).
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.YYYYYYY.svg)](https://doi.org/10.5281/zenodo.YYYYYYY)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23126216.svg)](https://doi.org/10.5281/zenodo.23126216)
 
 ## What it builds
 
