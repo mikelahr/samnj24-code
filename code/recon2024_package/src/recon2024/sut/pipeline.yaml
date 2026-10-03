@@ -1,0 +1,801 @@
+stage: sut
+
+dirs:
+  aggregate: raw/SUT_71sectors/
+  benchmark: raw/SUT_benchmark/
+  transport: raw/FAF/
+  construction: Construction_IO_2024/outputs/
+  trade: raw/Trade/out_2024_ESR/   # RECON2024 2026-09-27: ESR vectors (common-rate, mu .2529); was raw/Trade/out_2024/
+  pce: raw/PCE/
+  government: raw/Government/
+  sainc: raw/SAINC/
+  rpc_process: RECON2024/{process}/RPC/
+  target: RECON2024/{process}/SUT/
+  results: RECON2024/{results}/
+
+# RECON2024: this stage changes substantively (see README_RECON2024_port.md):
+#   process_suts + create_target  - REPLACED by import_construction_sut: the
+#       421-sector Use/Supply_revised_NAICS421_2024 from Construction_IO_2024
+#       is the balanced detail SUT (no 2017-detail-to-aggregate projection).
+#   process_margins  - FAF6 2024 extract replaces faf_selected_subset (FAF5 2022).
+#   process_bea      - VA distribution on the 421 axis (construction rows are
+#       NAICS industries, not BEA structure types).
+#   create_vectors   - state imports and exports come from raw/Trade/out_2024
+#       (retained imports, netted exports by BEA commodity) plus a services
+#       allocation; no longer national imports x wage share.
+#   export_A_matrices - one A_domestic per STATE (state import vector), plus
+#       counties from their state's A.
+steps:
+  - extract_summary_year
+  - process_suts
+  # - process_margins
+  # - create_bridge
+  # - process_bea
+  # - apply_margins
+  # - create_symmetric
+  # - process_government
+  - process_government_census   # RECON2024: {year} state & local from Census
+  - process_government_usaspending  # RECON2024: FY{year} federal contracts by place of performance
+  - process_rpc_tax_inputs      # RECON2024: {year} tax inputs for the rpc stage
+  # - create_state_trade       # to write
+  # - create_vectors
+  # - export_A_matrices
+  - export_state_use_A       # RECON2024: Use-side domestication (state B_dom and A)
+  - export_domestic_demand   # RECON2024: demand net of international imports, for the rpc stage
+
+#########################################################
+create_target:
+  params:
+    maxstep: 0.2
+    stepreduce: 0.5
+    eps: 1.0
+    nmax: 5000
+    uscale: [0.0, 0.01, 1.0]
+
+  adhoc_fix_other: ['S00300', 'S00900']
+
+  target:
+    # key: target_det
+    # info: 'estimated detailed data 2022'
+    folder: target
+    init_det: sut_det_{year}_initial.xlsx
+    init_agg: sut_agg_{year}_initial.xlsx
+    init_diff: sut_agg_{year}_init_diff.xlsx
+    bal_det: sut_det_{year}_balanced.xlsx
+    bal_agg: sut_agg_{year}_balanced.xlsx
+    bal_diff: sut_agg_{year}_bal_diff.xlsx
+
+
+#########################################################
+create_symmetric:
+  noncomparable: 'S00300'
+
+  nettax_extra: 'result_extra'
+    
+  target:
+    folder: target
+    files: 
+      sut: sut_reallocated.xlsx
+      iot: iot.xlsx
+   
+  decimals: 5
+
+#########################################################
+apply_margins:
+  target:
+    folder: target
+    file: sut_det_{year}_margins.xlsx
+    # statistics: margins_results.xlsx
+
+  balance:
+    eps: 1.0
+    nmax: 5000 
+
+
+#########################################################
+process_margins:
+  source:
+    raw_transport:
+      folder: transport
+      file: faf6_selected_subset.csv   # RECON2024: FAF6 2022 base (was FAF5 faf_selected_subset.csv)
+      fields:
+        value: current_million dollars in 2022   # FAF6 base-year 2022 values (latest FAF benchmark)
+        sector: sctg2
+        margin: dms_mode
+
+  target:
+    folder: target
+    file: margins_template.xlsx
+    internal: margins_config_FAF6.xlsx   # RECON2024: FAF6 tra_raw_sector; original margins_config.xlsx untouched
+    sheets:
+      raw_transport:
+        margin: tra_raw_margin
+        sector: tra_raw_sector
+      transport:
+        margin: transport_margin
+        sector: transport_sector
+      wholesale:
+        margin: wholesale_margin
+        sector: wholesale_sector
+      retail:
+        margin: retail_margin
+        sector: retail_sector
+        
+  sut_codes:
+    trade: 'TRADE'
+    transport: 'TRANS'
+
+  trade_initial_digits:
+    wholesale: ['42']
+    retail: ['44', '45', '4B']
+    
+  transport_margins:
+    '1': '484000'
+    '2': '482000'
+    '3': '483000'
+    '4': '481000'  
+    '5': '482000'
+    '6': '486000'
+
+
+#########################################################
+create_bridge:
+  target:
+    folder: target
+    file: aggregation_bridge.xlsx
+
+  levels:
+    offspring: source_det
+    parent: source_agg   
+  
+  codes:
+    - industries
+    - commodities
+    
+  detailed_aggregate_pairs:
+    '491000': 'GFE'
+    '48A000': '487OS'
+    '492000': '487OS'
+    '531HSO': 'HS'
+    '531HST': 'HS'
+    '531ORE': 'ORE'
+    "5416A0": "5412OP"
+    "541610": "5412OP"
+    "541700": "5412OP"
+    "541800": "5412OP"
+    "5419A0": "5412OP"
+    "541920": "5412OP"
+    "541940": "5412OP"
+    "515100": "513"
+    "515200": "513"
+    "517110": "513"
+    "517210": "513"
+    "517A00": "513"
+    "S00203": "GSLE"
+    "S00202": "GSLE"
+    "S00201": "GSLE"
+    "GSLGH": "GSLG"
+    "GSLGE": "GSLG"
+    "GSLGO": "GSLG"
+    "S00102": "GFE"
+    "S00101": "GFE"
+    "S00600": "GFGN"
+    "S00500": "GFGD"
+    "S00401": "Used"
+    "S00402": "Used"
+    "S00900": "Other"
+    "S00300": "Other"
+    "TRANS": "TRANS"
+    "TRADE": "TRADE"
+
+
+#########################################################
+# RECON2024: target_agg = {year} 71-sector summary; source_det = the 421-sector
+# construction package (already at {year} prices and balanced to the summary);
+# source_agg = the same {year} summary, so the aggregate projection ratio is 1
+# and create_target only reconciles the detail to the BEA statistics.
+extract_summary_year:
+  source_folder: aggregate
+  target_folder: target
+  sheet: Table
+  files:
+    use:
+      source: Use_Summary.xlsx
+      target: Use_{year}.xlsx
+    supply:
+      source: Supply_Summary.xlsx
+      target: Supply_{year}.xlsx
+
+process_suts:
+  suts:
+    target_agg: 
+      info: 'aggregate data {year}'
+      config: load_aggregate
+      file: sut_agg_{year}.xlsx
+    source_agg: 
+      info: 'aggregate data {year} (source = target, see note)'
+      config: load_aggregate
+      file: sut_agg_{year}_source.xlsx
+    source_det: 
+      info: 'detailed data {year}, 421-sector construction package'
+      config: load_construction
+      file: sut_det_{year}.xlsx
+
+  folder: target
+
+  codes_bridges:
+    file: bridge_config.xlsx
+    sheets:
+      final:
+        codes: final_demand
+        load_aggregate: final_demand_agg
+        load_benchmark: final_demand_det             
+        load_construction: final_demand_det
+      primary:
+        codes: value_added
+        load_aggregate: value_added_agg
+        load_benchmark: value_added_det             
+        load_construction: value_added_det
+      trade:
+        codes: trade_imports
+        load_aggregate: trade_imports_agg
+        load_benchmark: trade_imports_det             
+        load_construction: trade_imports_det
+
+  replace:
+    target_agg:    
+      - path: [source, folder]
+        value: target
+      - path: [source, files, use]
+        value: Use_{year}.xlsx
+      - path: [source, files, supply]
+        value: Supply_{year}.xlsx
+    source_agg:    
+      - path: [source, folder]
+        value: target
+      - path: [source, files, use]
+        value: Use_{year}.xlsx
+      - path: [source, files, supply]
+        value: Supply_{year}.xlsx
+
+  reallocate_margins:
+    source: sup_tra
+    target:
+      sup_int: 1
+      use_int: -1
+    codes: 
+      ['TRADE', 'TRANS']
+
+  subtract_subsidy: 
+    table: use_pri
+    subsidy: 'T00OSUB'
+    tax: 'T00OTOP'
+
+  merge_subsidies:
+    subsidy: ''
+
+
+#########################################################
+iot_structure:
+  data:
+    use_int:
+      label: use_intermediate 
+      index: industries
+      columns: industries
+
+    use_fin:
+      label: use_final 
+      index: industries
+      columns: final
+
+    use_pri:
+      label: use_primary
+      index: primary
+      columns: industries
+
+    D:
+      label: supply_technical
+      index: commodities
+      columns: industries
+
+    A:
+      label: use_technical
+      index: industries
+      columns: industries
+
+  codes:
+    industries: industry sectors
+    final: final demand categories 
+    primary: primary input categories
+
+  internal_codes: [industries]
+
+
+#########################################################
+sut_structure:
+  data:
+    use_int:
+      label: use_intermediate 
+      index: commodities
+      columns: industries
+
+    use_fin:
+      label: use_final 
+      index: commodities
+      columns: final
+
+    use_pri:
+      label: use_primary
+      index: primary
+      columns: industries
+
+    sup_int:
+      label: supply_intermediate
+      index: commodities
+      columns: industries
+
+    sup_tra:
+      label: supply_trade
+      index: commodities
+      columns: trade
+
+  codes:
+    commodities: commodity categories   
+    industries: industry sectors
+    final: final demand categories 
+    primary: primary input categories
+    trade: supply transformations and imports
+
+  internal_codes: [commodities, industries]
+
+#########################################################
+load_aggregate:
+  source:
+    folder: aggregate
+    sheet: Table
+    files:
+      use: Use_2017.xlsx
+      supply: Supply_2017.xlsx
+
+  data:
+    use_int:
+      file: use
+      data: [C, 8, BU, 80]
+      columns: [C, 6, BU, 6]
+      index: [A, 8, A, 80]
+
+    use_fin:
+      file: use
+      data: [BW, 8, CO, 80]
+      columns: [BW, 6, CO, 6]
+      index: [A, 8, A, 80]
+
+    use_pri:
+      file: use
+      data: [C, 82, BU, 89]
+      columns: [C, 6, BU, 6]
+      index: [A, 82, A, 89]
+
+    sup_int:
+      file: supply
+      data: [C, 8, BU, 80]
+      columns: [C, 6, BU, 6]
+      index: [A, 8, A, 80]
+
+    sup_tra:
+      file: supply
+      data: [BW, 8, CE, 80]
+      columns: [BW, 6, CE, 6]
+      index: [A, 8, A, 80]
+
+  codes:
+    commodities:
+      file: use
+      data: [A, 8, B, 80]
+      columns: [code, title]
+    industries:
+      file: use
+      data: [C, 6, BU, 7]
+      columns: [code, title]
+      transpose: True
+    final:
+      file: use
+      data: [BW, 6, CO, 7]
+      columns: [code, title]
+      transpose: True
+    primary:
+      file: use
+      data: [A, 82, B, 85]
+      columns: [code, title]
+    trade:
+      file: supply
+      data: [BW, 6, CE, 7]
+      columns: [code, title]
+      skip: ['T013', 'T014']
+      transpose: True
+
+  
+#########################################################
+load_construction:
+  reader: construction
+  source:
+    folder: construction
+    files:
+      use: Use_revised_NAICS421_{year}.csv
+      supply: Supply_revised_NAICS421_{year}.csv
+  value_added_rows: [V00100, T00OTOP, V00300]
+  trade_columns: [MCIF, MADJ, TRADE, TRANS, MDTY, TOP, SUB]
+  skip_rows: [T018]
+  skip_columns: [T001, T019]
+  titles:
+    benchmark_config: load_benchmark
+    construction_file: construction.xlsx
+    construction_sheet: naics31
+
+#########################################################
+load_benchmark:
+  source:
+    folder: benchmark
+    sheet: '2017'
+    files:
+      use: Use_SUT_Framework_2017_DET.xlsx
+      supply: Supply_2017_DET.xlsx
+
+  data:
+    use_int:
+      file: use
+      data: [C, 7, 'ON', 408]
+      columns: [C, 6, 'ON', 6]
+      index: [A, 7, A, 408]
+
+    use_fin:
+      file: use
+      data: [OP, 7, PH, 408]
+      columns: [OP, 6, PH, 6]
+      index: [A, 7, A, 408]
+
+    use_pri:
+      file: use
+      data: [C, 410, 'ON', 416]
+      columns: [C, 6, 'ON', 6]
+      index: [A, 410, A, 416]
+
+    sup_int:
+      file: supply
+      data: [C, 7, 'ON', 408]
+      columns: [C, 6, 'ON', 6]
+      index: [A, 7, A, 408]
+
+    sup_tra:
+      file: supply
+      data: [OP, 7, OX, 408]
+      columns: [OP, 6, OX, 6]
+      index: [A, 7, A, 408]
+
+
+  codes:
+    commodities:
+      file: use
+      data: [A, 7, B, 408]
+      columns: [code, title]
+    industries:
+      file: use
+      data: [C, 5, 'ON', 6]
+      columns: [title, code]
+      transpose: True
+    final:
+      file: use
+      data: [OP, 5, PH, 6]
+      columns: [title, code]
+      transpose: True
+    primary:
+      file: use
+      data: [A, 410, B, 412]
+      columns: [code, title]
+    trade:
+      file: supply
+      data: [OP, 5, OX, 6]
+      columns: [title, code]
+      skip: ['T013', 'T014']
+      transpose: True
+
+
+#########################################################
+process_bea:
+  source:
+    file: bea_config.xlsx
+    sheets:
+      agg: 'tax_agg'
+      det: 'tax_det'
+    columns:
+      tax: 'T00TOP'
+      subsidy: 'T00SUB'
+
+  target:
+    folder: target
+    file: bea_statistics.xlsx
+    levels: ['agg', 'det']
+    data:
+      pce: ['pce']
+      gdp: ['wages', 'nettax', 'surplus']
+
+  pce_adhoc: # in million dollars
+    'S00300': 121118
+    'S00900': -140601
+
+  pce_other_service:
+    reset: ['813100', '813A00', '813B00']
+    control: ['811100', '811200', '811300', '811400', 
+              '812100', '812200', '812300', '812900', '814000']
+
+  gdp_other_service:
+    va: ['nettax', 'surplus']
+    remove: '814000'
+    distribute: ['811100', '811200', '811300', '811400', 
+              '812100', '812200', '812300', '812900', 
+              '813100', '813A00', '813B00']
+
+  overseas: # in million dollars
+    - {industry: 'S00600', primary: 'wages', value: 5761}
+    - {industry: 'S00500', primary: 'wages', value: 32115}
+    - {industry: 'S00500', primary: 'surplus', value: 108617}
+    
+  va_zeros:
+    - {target: '333314',source: '333318', fraction: 0.3}
+    - {target: '333316',source: '333318', fraction: 0.1}
+    - {target: '335912',source: '335911', fraction: 0.4}
+    - {target: '515200',source: '515100', fraction: 0.4}
+    - {target: '52A000',source: '522A00', fraction: 0.6}
+
+  housing:
+    - {'agg': 'ORE', 'va': 'nettax', 'source': '531ORE', 
+      'target': '531HSO'}
+    - {'agg': 'ORE', 'va': 'surplus', 'source': '531ORE', 
+      'target': '531HSO'}
+    - {'agg': 'HS', 'va': 'wages', 'source': '531HST', 
+      'target': '531ORE'}
+    
+  trade:
+    individual: 
+      - {'aggregate': '441', 'detailed': '441000'} 
+      - {'aggregate': '445', 'detailed': '445000'} 
+      - {'aggregate': '452', 'detailed': '452000'} 
+    bulk: ['444000', '446000', '447000', '448000', '454000',
+     '4B0000']
+
+  government_aggregate:
+    - {'agg': 'GFGN', 'va': 'wages', 'source': 'S00600', 
+      'target': 'S00500'}
+    - {'agg': 'GFE', 'va': 'wages', 'source': '491000', 
+      'target': 'S00500'}
+    - {'agg': 'GFGN', 'va': 'nettax', 'source': 'S00600', 
+      'target': 'S00102'}
+    - {'agg': 'GFE', 'va': 'surplus', 'source': '491000', 
+      'target': 'S00600'}
+    - {'agg': 'GSLG', 'va': 'wages', 'source': 'GSLGE', 
+      'target': 'S00203'}
+    - {'agg': 'GSLG', 'va': 'surplus', 'source': 'GSLGE', 
+      'target': 'S00203'}
+
+  government_detailed:
+    - {'va': 'nettax', 'source': '491000', 'target': 'S00102'}
+    - {'va': 'nettax', 'source': 'S00101', 'target': 'S00102'}
+    - {'va': 'nettax', 'source': 'GSLGE', 'target': 'S00203'}
+    - {'va': 'nettax', 'source': 'GSLGH', 'target': 'S00203'}
+    - {'va': 'nettax', 'source': 'GSLGO', 'target': 'S00203'}
+    - {'va': 'nettax', 'source': 'S00201', 'target': 'S00203'}
+    - {'va': 'nettax', 'source': 'S00202', 'target': 'S00203'}
+
+  government_scaled:
+    va: ['wages', 'surplus']
+    source: '491000'
+    ratio: 'S00101'
+    target: 'S00102'
+    
+  balancing:
+    n: 500
+    alpha: 0.1 
+
+
+#########################################################
+process_government:
+  target:
+    folder: target
+    file: government_2024.csv   # RECON2024 2026-09-27: government.csv is write-locked; Census + USAspending proxies live here
+
+  source:
+    file: government_config.xlsx
+    sheets: ['state_local', 'state_codes']   # RECON2024: no 'federal' sheet in the workbook
+    
+  url: "https://api.usaspending.gov/api/v2/search/spending_by_category/awarding_agency"
+
+  request:
+    category: "awarding_agency"
+    limit: 100
+    page: 1
+    spending_level: "transactions"
+    filters:
+      place_of_performance_scope: "domestic"
+      place_of_performance_locations: 
+        - country: "USA"
+          state: none
+      time_period: 
+        - start_date: "{year}-01-01"
+          end_date: "{year}-12-31"
+
+  state_local:
+    other: ['Current operations']
+    education: ['Education']
+    health: ['Hospitals', 'Health']
+
+  industries:
+    defense: S00500
+    nondefense: S00600
+    other: GSLGO
+    education: GSLGE
+    health:  GSLGH
+     
+
+#########################################################
+process_government_census:
+  source:
+    folder: government
+    file: GOVSLOCALFINTIMESERIES.GS00LOCALFIN_2026-09-21T112416.zip
+    govtype: '001'           # State and Local
+  items:
+    current_operations: LF0094
+    education: LF0107
+    hospitals: LF0129
+    health: LF0132
+  target:
+    folder: target
+    file: government_2024.csv
+
+#########################################################
+process_government_usaspending:
+  source:
+    folder: government
+    file: usaspending_contracts_pop_state_FY{year}.csv
+  target:
+    folder: target
+    file: government_2024.csv
+
+#########################################################
+process_rpc_tax_inputs:       # writes the rpc stage's tax inputs for {year}
+  target_folder: rpc_process
+  census:
+    folder: government
+    file: GOVSLOCALFINTIMESERIES.GS00LOCALFIN_2026-09-21T112416.zip
+    lines:                    # 22slsstab1 line -> GS00LOCALFIN items
+      L9:  {label: Property, plus: [LF0009]}
+      L11: {label: General sales, plus: [LF0011]}
+      L12: {label: Selective sales, plus: [LF0012]}
+      L13: {label: Motor fuel, plus: [LF0015]}
+      L14: {label: Alcoholic beverage, plus: [LF0016]}
+      L15: {label: Tobacco products, plus: [LF0017]}
+      L16: {label: Public utilities, plus: [LF0020]}
+      L17: {label: Other selective sales, plus: [LF0012], minus: [LF0015, LF0016, LF0017, LF0020]}
+      L18: {label: Individual income, plus: [LF0023]}
+      L19: {label: Corporate income, plus: [LF0024]}
+      L20: {label: Motor vehicle license, plus: [LF0029]}
+      L21: {label: Other taxes, plus: [LF0008], minus: [LF0009, LF0010, LF0022, LF0029]}
+      L23: {label: Current charges, plus: [LF0041]}
+      L24: {label: Education, plus: [LF0042]}
+      L27: {label: Hospitals, plus: [LF0047]}
+  irs:
+    folder: government
+    file: irs_state_collections_FY2024.csv
+    column: business_income
+  total_income_tax:           # IRS SOI Historic Table 2 (irs.gov, via the browser 2026-09-21)
+    folder: government
+    file: irs_soi_historic_table2_TY2022_TY2023_state_totals.csv
+    column: A06500              # income tax after credits, $k
+    income_folder: sainc
+    income_file: SAINC4__ALL_AREAS_1929_2025.csv
+
+#########################################################
+create_vectors:
+  target:
+    folder: target
+    file: vectors.csv
+
+  decimals: 5
+
+  # RECON2024: the 2024 SUT columns balance at basic prices; taxes on products
+  # less subsidies (nettax_commodity, $1.01T) are carried outside the column
+  # identity and regional other production taxes = SAGDP/CAINC total less them
+  va_basic: true
+  # RECON2024 item 7 (Mike 2026-09-21: adopted): nonresident travel and
+  # education spending moved from PCE to exports, by state where spent
+  # (built by code/scripts/build_travel_exports_state.py)
+  travel_exports:
+    folder: target
+    file: travel_exports_state_commodity_{year}.csv
+
+  # RECON2024: value added above output (Mike 2026-09-21: plan 2, plan 1 back-up)
+  va_output:
+    f_min: 0.02            # minimum intermediate-input share of output
+    min_comp_share: 0.15   # below this compensation/VA (national), output is split by GDP share
+    diagnostics: ../process/SUT/va_output_diag
+
+  # RECON2024: state trade vectors from the Census state pipeline
+  state_trade:
+    folder: trade
+    imports: retained_imports_state_bea_2024_SUTscaled.csv
+    exports: exports_with_gateway_state_bea_2024.csv   # RECON2024 2026-09-27: netted exports + wholesale part of the gateway margin
+    export_cap: 0.9        # max share of a state industry's output that can be exported
+    gateway_margin:        # RECON2024 2026-09-27: ESR gateway service margin by state
+      file: gateway_margin_state_2024.csv
+      wholesale_share: 0.786          # 2017 benchmark: wholesale 78.6% (already in the goods export shares), transport 21.4%
+      wholesale_prefix: []            # wholesale part carried with the goods (trade build); only transport placed here
+      transport: ['481000', '482000', '483000', '484000', '486000']
+    services:              # states' shares of international imports of services
+      sapce:
+        folder: pce
+        file: SAPCE4__ALL_AREAS_1997_2024.csv
+      household_allocator:   # commodity -> SAPCE4 line for the household part
+        'S00300': 129          # noncomparable imports: foreign travel by U.S. residents
+        '481000': 64           # air transportation (passenger fares)
+        '483000': 65           # water transportation
+        '561500': 129          # travel arrangement
+        '611A00': 97           # higher education (study abroad)
+        '611B00': 95           # other education
+        '622000': 51           # hospitals (medical care abroad)
+        '5241XX': 109          # insurance
+        '524200': 109
+        '52A000': 105          # financial services
+        '523A00': 105
+        '523900': 105
+      goods_import_allocated: ['483000', '488A00', '4A0000', '493000']   # port, freight, warehousing
+      force_services: ['S00300']    # Census puts HS 98/99 hold-outs here; allocate as travel etc.
+      intermediate_weight: payroll   # payroll | output: how the buying industries are placed in states
+      producer_lq_alpha: 0.5         # import propensity ~ LQ(producing industry payroll)^-alpha; 0 = off
+      government:
+        folder: target
+        file: government_2024.csv
+    state_codes:
+      file: government_config.xlsx
+      sheet: state_codes
+  
+  
+#########################################################
+export_state_use_A:
+  folder: results
+  subfolder_A: Amatrices_use
+  subfolder_B: Bmatrices
+  subfolder_U: Usematrices
+  prefix: 'recon{year}_'
+  suffix: '.csv'
+  decimals: 6
+  ratio_bounds: [0.25, 4.0]     # state/US intermediate-use fraction ratio, per industry
+  import_share_cap: 0.95        # max international import share of a state's use of a commodity
+  zero_if_national_imports_nonpositive: true   # 483000/492000 etc.: BEA CIF/FOB adjustment, no own import leakage
+
+#########################################################
+export_A_matrices:
+  folder: results
+  subfolder: Amatrices
+  prefix: 'recon{year}_Amatrix_'
+  suffix: '.csv'
+  ratio_bounds: [0.25, 4.0]   # RECON2024: bound state/US intermediate-use ratio (as export_state_use_A)
+  clip_supplydemand: true   # RECON2024: bound supply/demand to [0,1] before scaling A (negative national imports)
+    
+  decimals: 5
+  
+
+
+#########################################################
+# RECON2024: demand net of international imports by region x commodity,
+# read by the rpc stage (supply / domestic demand; RPC = m / (m + im_dom)).
+export_domestic_demand:
+  target:
+    folder: target
+    file: domestic_demand_{year}.csv
+    diagnostics: domestic_demand_phi_{year}.csv
+  ratio_bounds: [0.25, 4.0]
+  phi_bounds: [0.5, 2.0]     # reporting only
+  import_share_cap: 0.95     # as export_state_use_A
+  county_state_recipes: true   # counties use their state's input recipes (state r_s)
+  county_imports_by_use: true
+  write_county_imports: true    # item 5: also write them into vectors.csv (results `imports` column)   # counties get the state's imports by use share, not output share
+  decimals: 1

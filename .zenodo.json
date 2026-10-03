@@ -1,0 +1,29 @@
+{
+  "title": "SAMNJ24 build code: a social accounting matrix for New Jersey 2024",
+  "description": "<p>Deterministic Python chain that builds the Social Accounting Matrix for New Jersey 2024 (SAMNJ24) from New Jersey's 2024 state input-output accounts and the national 421-sector supply-use tables. <code>run_samnj24.py</code> writes the state direct-requirements and Use matrices (Stage A), the 65-account core SAM (Stage B), the 19-account institutional SAM (Stage C), the control totals and accounting checks (Stage D), and the 75-account core SAM with federal, state and local government, five tax accounts and a subsidy account (Stage E). <code>code/recon2024_package</code> and <code>code/scripts</code> hold the upstream RECON2024 code that produces the state inputs; <code>code/RUN_ORDER_upstream.md</code> gives the order in which it was run.</p><p>The data this code reads are deposited separately; see the repository README.</p>",
+  "upload_type": "software",
+  "license": "mit",
+  "access_right": "open",
+  "version": "1.0.0",
+  "keywords": [
+    "social accounting matrix",
+    "input-output analysis",
+    "regional economics",
+    "New Jersey",
+    "fiscal accounting",
+    "supply-use tables"
+  ],
+  "creators": [
+    { "name": "Álvarez-Martínez, María T.", "affiliation": "Universidad Pablo de Olavide" },
+    { "name": "Lahr, Michael L.", "affiliation": "Edward J. Bloustein School of Planning and Public Policy, Rutgers, The State University of New Jersey" },
+    { "name": "Rodrigues, João F. D.", "affiliation": "Diagonal Solutions, The Netherlands" }
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "10.5281/zenodo.XXXXXXX",
+      "relation": "isSupplementTo",
+      "resource_type": "dataset",
+      "scheme": "doi"
+    }
+  ]
+}

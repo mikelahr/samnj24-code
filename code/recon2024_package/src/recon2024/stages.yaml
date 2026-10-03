@@ -1,0 +1,20 @@
+# RECON2024 — top-level configuration
+# base: the RPC_explorations tree. raw/ inputs are read from there; this package
+# writes only under RECON2024/ (process/, results/, logs/).
+dirs:
+  base_windows: C:/Users/mikel/RPC_explorations/
+  base_posix: ~/mnt/RPC_explorations/
+  logs: RECON2024/logs/
+
+year: 2024        # reference year; substituted for {year} in every pipeline.yaml
+prev_year: 2022   # previous vintage used for bridges ({prev_year})
+process_dir: process   # RECON2024/{process}/ ; e.g. process_2022 for a 2022 re-run
+results_dir: results
+
+loglevel: 20
+
+stages:
+  qcew: 'QCEW jobs and wages (filled panel imported, then bridged to SUT industries)'
+  bea: 'BEA GDP components, earnings, jobs and PCE'
+  sut: 'SUT (421-sector base, margins, state trade, A matrices)'
+  rpc: 'RPCs and taxes'

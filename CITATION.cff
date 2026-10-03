@@ -1,0 +1,48 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite both the software and the paper it accompanies."
+title: "SAMNJ24 build code: a social accounting matrix for New Jersey 2024"
+abstract: >-
+  Deterministic Python chain that builds the Social Accounting Matrix for New
+  Jersey 2024 (SAMNJ24) from New Jersey's 2024 state input-output accounts and
+  the national 421-sector supply-use tables: the state direct-requirements and
+  Use matrices, the 65-account core SAM, the 19-account institutional SAM, the
+  control totals, and the 75-account core SAM with federal, state and local
+  government, five tax accounts and a subsidy account. Also includes the
+  upstream RECON2024 package and scripts that produce the state inputs.
+type: software
+authors:
+  - family-names: "Álvarez-Martínez"
+    given-names: "María T."
+    affiliation: "Universidad Pablo de Olavide"
+    # orcid: "https://orcid.org/0000-0000-0000-0000"
+  - family-names: "Lahr"
+    given-names: "Michael L."
+    affiliation: "Edward J. Bloustein School of Planning and Public Policy, Rutgers, The State University of New Jersey"
+    # orcid: "https://orcid.org/0000-0000-0000-0000"
+  - family-names: "Rodrigues"
+    given-names: "João F. D."
+    affiliation: "Diagonal Solutions, The Netherlands"
+    # orcid: "https://orcid.org/0000-0000-0000-0000"
+license: MIT
+repository-code: "https://github.com/mikelahr/samnj24-code"
+version: "1.0.0"
+date-released: "2026-10-03"
+keywords:
+  - social accounting matrix
+  - input-output analysis
+  - regional economics
+  - New Jersey
+  - fiscal accounting
+  - supply-use tables
+preferred-citation:
+  type: article
+  title: "Social accounting matrix for New Jersey 2024 with methods and sources for other U.S. states"
+  authors:
+    - family-names: "Álvarez-Martínez"
+      given-names: "María T."
+    - family-names: "Lahr"
+      given-names: "Michael L."
+    - family-names: "Rodrigues"
+      given-names: "João F. D."
+  journal: "Scientific Data"
+  year: 2026

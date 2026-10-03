@@ -1,0 +1,264 @@
+stage: rpc
+
+dirs:
+  county: raw/CAINC/
+  rpc: raw/RPC/
+  government: raw/Government/
+  sut: RECON2024/{process}/SUT/
+  process: RECON2024/{process}/RPC/
+  results: RECON2024/{results}/
+
+# RECON2024: government tax inputs (22slsstab1, 22dbs01t05co, 22in01stateshares)
+# are the 2022 Census/IRS files - 2024 equivalents still to be obtained;
+# calculate_rpc uses the state-specific supply/demand from the sut stage.
+steps:
+  - process_area
+  - process_vectors
+  - process_rpc_regression
+  - process_earnings
+  # - process_total_income_tax      # 2022 IRS file (22in01stateshares) - TODO {year}
+  # - process_business_income_tax   # 2022 Census file (22dbs01t05co) - TODO {year}
+  # - process_state_local_revenue   # 2022 Census file (22slsstab1)   - TODO {year}
+  - export_results
+
+
+#########################################################
+process_state_local_revenue:
+  source: 
+    folder: government
+    file: 22slsstab1.xlsx
+    sheet: '2022_US_WY'
+
+  target: 
+    folder: process
+    file: state_local_revenue.csv
+
+  lines: [9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 23, 24, 27]
+  government:
+    state_local: 1
+    state: 3
+    local: 4
+
+
+  columns: 'A,C'
+  names: ['region', 'value']
+  index: 
+    start: 4
+    end: 56
+
+
+#########################################################
+process_business_income_tax:
+  source: 
+    folder: government
+    file: 22dbs01t05co.xlsx
+    sheet: 'Table 5'
+
+  target: 
+    folder: process
+    file: business_income_tax.csv
+
+  columns: 'A,C'
+  names: ['region', 'value']
+  index: 
+    start: 4
+    end: 56
+
+  
+#########################################################
+process_total_income_tax:
+  source: 
+    folder: government
+    file: 22in01stateshares.xlsx
+
+  target: 
+    folder: process
+    file: total_income_tax.csv
+
+  columns: 'A,W'
+  names: ['region', 'value']
+  index: 
+    start: 5
+    end: 57
+
+
+#########################################################
+process_earnings:
+  source: 
+    folder: county
+    file: CAINC5N__ALL_AREAS_2001_2024.csv
+
+  target: 
+    folder: process
+    file: earnings.csv
+
+  columns:
+    region: GeoFIPS
+    label: GeoName
+    code: LineCode
+    value: '{year}'
+  
+  select:
+    place_of_residence: '45'
+    place_of_work: '35'
+  
+  replace:
+    column: 'region'
+    characters: [' ', '"']
+
+#########################################################
+process_vectors:
+  target:
+    folder: process
+    file: vectors_sample.csv    
+
+  regions: ['00000', '39000', '39001']
+
+
+#########################################################
+process_area:
+  source:
+    folder: rpc
+    file: GEOINFO2020.GEOINFO-2025-08-21T144254.csv    
+    columns:
+      code: 'Geographic Identifier (GEO_ID)'
+      title: 'Geographic Area Name (NAME)'
+      m2: 'Area (Land, in square meters) (AREALAND)'
+
+  target:
+    folder: process
+    file: area.csv
+
+  remove_append:
+    '0100000US': '00000'
+    '0400000US': '000'
+    '0500000US': '' 
+
+  maui_kalawao_match:
+    '15901': '15005'
+
+
+#########################################################
+process_rpc_regression:
+  source:
+    folder: rpc
+    # FAF6.0-based panel; FAF5 version kept as regression_data.xls
+    file: regression_data_FAF6_domdem_culled.xlsx   # RECON2024 (2026-09-21): dependent = culled FAF6 2022 RPC (value share by mode, SCTG 1,2,3,41 exempt); regressors as in regression_data_FAF6_domdem.xlsx (l_supply/l_demand on domestic demand); uncull version: regression_data_FAF6_domdem.xlsx
+    industry_sctg_conversion: industry_sctg_conversion_421.csv   # RECON2024: 31 NAICS construction rows (sctg 0)
+
+  target:
+    folder: process
+    regression: rpc_model.pickle
+    summary: rpc_summary.txt
+    names: rpc_names.yaml
+    repeated: us_s_wv_ratio.csv
+    industry_sctg_conversion: industry_sctg_conversion.csv
+
+  # fractional-response QMLE link: probit | logit | cloglog. Links are
+  # statistically indistinguishable (paired bootstrap dR2 within +/-0.003);
+  # probit matches the legacy Stata fracreg probit.
+  link: probit
+
+  exo_vars: [
+      "emp_estab",  # qcew_emp / qcew_est
+      "emp_estab_ratio", # emp_estab ind-reg / ind-nation
+      "l_supply",  # natural log of supply = output - exports
+      "l_demand",  # natural log of demand = supply + imports
+      "empLQ",  # empshare/USempshare, empshare=emp in ind-reg/reg
+      "lodging_empLQ",  # empLQ['721000'] in same region
+      "lodging_wageshare", # wage ['721000'] / total wage in region
+      "landshare"  # region / nation
+    ]
+  endo_var: "rpc"
+
+  index_vars: ['fips', 'sctg']
+
+  repeated_var:
+    index: "sctg" 
+    value: "us_s_wv_ratio"
+
+  dummy_vars:
+    sctg:
+      animals: ['1']
+      aggood: ['5', '6', '3', '7', '2', '22', '8', '4']
+      woodpaper: ['28', '29', '27', '26']
+      metalequip: ['34', '33']
+      sctg10: ['10']
+      sctg17: ['17']
+      sctg30: ['30']
+      sctg31: ['31']
+      sctg37: ['37']
+      sctg38: ['38']
+      sctg39: ['39']
+    fips:
+      esc: ['47000', '01000', '21000', '28000']
+      pac: ['53000', '06000', '15000', '02000', '41000']
+
+
+#########################################################
+calculate_rpc:
+  region_total: '00000'
+  industry_lodging: '721000'
+  sctg_exclude: ['0', '42', '72']
+  new_columns: ['rpc', 'supply', 'demand', 'earningsoutput']
+  # RECON2024 (Mike 2026-09-21): demand = DOMESTIC demand (use net of international
+  # imports; sut export_domestic_demand), matching rpc = m / (m + inflows) and the
+  # state A matrices already net of international imports. 'total' = legacy.
+  demand: domestic
+  # RECON2024 (2026-09-21): final 2024 RPCs from the RPC chat (culled FAF6 refit,
+  # raked to FAF6 2024 anchors; CT and AK counties not raked). Remove to use the
+  # stage's own prediction.
+  rpc_override:
+    folder: process
+    file: predict_2024/rpc_predictions_2024_raked.csv
+    column: rpc_raked
+
+  # RECON2024 post-processing switches (were unconditional in RECON2022)
+  post_processing:
+    structural_zero: true                # supply <= 0 -> rpc = 0 (a real zero, not a gap)
+    services_supply_demand: true         # sctg in sctg_exclude -> supply/demand ratio
+    upper_bound_squeeze: services_only   # false | services_only | all; model predictions
+                                         # no longer need it, supply/demand ratios do
+    zero_fill: false                     # missing prediction -> clipped supply/demand, not 0
+    lodging_override: true               # placeholder: with it off, county mean rpc for
+                                         # 721000 goes 0.118 -> 0.957. Replace with a
+                                         # visitor-origin estimate, then turn off.
+
+
+#########################################################
+calculate_taxes:
+  source:
+    folder: INTERNAL_PATH
+    file: taxes_config.xlsx
+    sheets: [
+      'stat_frac_loc_rest',
+      'stat_loc_frac_fed_rest',
+      'stat_fix_loc_rest',
+      'stat_loc_fix_fed_rest']
+
+  all_state: ['S00201']
+
+  # RECON2024 item 4 (Mike 2026-09-21): split re-derived from 2024 Census S&L
+  # finances (rpc_domestic.install_taxes). Remove to get the legacy split.
+  recalibrate:
+    production:
+      federal_share: 0.0          # federal other taxes on production ~0; subsidies stay federal
+      lines: ['9', '20', '21']    # property, motor vehicle license, other taxes: state vs local
+    products:
+      sl_lines: ['11', '12']      # general + selective sales: S&L total (federal = rest)
+      default_line: ['11']        # state share for cells the legacy rules gave no S&L part
+
+  threshold:
+    industries: [
+      '481000', '517110', '517210', '517A00', '524113', '5241XX']
+    value: 0.025
+ 
+ 
+#########################################################
+export_results:
+  target:
+    folder: results
+    prefix: 'recon{year}'
+    
+  decimals: 5
+    

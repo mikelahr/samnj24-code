@@ -1,0 +1,282 @@
+dirs:
+  naics: raw/SUT_benchmark/
+  sut: RECON2024/{process}/SUT/
+  source: raw/QCEW/
+  construction: Construction_IO_2024/outputs/
+  target: RECON2024/{process}/QCEW/
+
+# RECON2024: process_data + balance (the RECON Balance engine on the raw
+# singlefile) are replaced by import_filled, which reads the v6/stage-A filled
+# panel from raw/QCEW/. The bridge steps run unchanged on its output.
+steps:
+  - process_codes
+  - import_filled
+  # - process_data      # RECON2022 path, kept for reference
+  # - balance           # RECON2022 path, kept for reference
+  - process_qcew_bridge
+  - process_naics_bridge
+  - retarget_sut_axis     # RECON2024: 12 BEA structure types -> 31 NAICS (421 axis)
+  - test_bridge
+  - apply_bridge
+
+#########################################################
+retarget_sut_axis:
+  axis:
+    folder: construction
+    file: A_naics_axis_2024.npz
+    use_table: Use_revised_NAICS421_2024.csv
+    wages_row: V00100
+  bridge:
+    folder: target
+    file: qcew_bridge.xlsx
+    sheet: sut
+  drop_prefix: ['233', '2303']
+
+#########################################################
+import_filled:
+  previous_year: {prev_year}
+  total_area_code: 'US000'
+  source:            # file = prefix + year + suffix (both years are read)
+    data: qcew_source_
+    tree: qcew_tree_
+    balanced: qcew_balanced_
+    suffix: .parquet
+  target:
+    data: qcew_source.csv
+    data_previous: qcew_previous.csv
+    tree: qcew_tree.csv
+    balanced: qcew_balanced.csv
+
+dummy:
+  parameter: 'hello'
+
+#########################################################
+process_codes:
+  source:
+    area:
+      source: area-titles-csv.csv
+      code: area_fips
+      title: area_title
+    ownership:
+      source: ownership-titles-csv.csv
+      code: own_code
+      title: own_title
+    industry:
+      source: industry-titles.csv
+      code: industry_code
+      title: industry_title
+
+  target:
+    file: codes.xlsx
+    sheets:
+      area: area
+      ownership: ownership
+      industry: industry
+      oind: ownership_industry
+      
+
+#########################################################
+process_data:
+  source: '{year}.annual.singlefile.csv'
+  source_previous: '{prev_year}.annual.singlefile.csv'
+  checks:
+    year: 
+      column: year
+      value: {year}
+    quarter: 
+      column: qtr
+      value: 'A'
+  nondisclosed: 'N'
+  columns: 
+    area: area_fips
+    ownership: own_code
+    industry: industry_code  
+    # level: agglvl_code # combination of owner and industry
+    # size: size_code # all entries have value 0
+    nondisclosed: disclosure_code
+    establishments: annual_avg_estabs
+    employment: annual_avg_emplvl
+    wages: total_annual_wages
+  target:
+    data: qcew_source.csv 
+    data_previous: qcew_previous.csv 
+    tree: qcew_tree.csv 
+    stat_file: statistics.xlsx
+    stat_sheet: source
+
+#########################################################
+balance:
+  params:
+    establishments:
+      maxstep: 0.2
+      stepreduce: 0.5
+      eps: 1.0
+      nmax: 2000
+      uscale: [0.0, 0.05, 1.0]
+    employment:
+      maxstep: 0.2
+      stepreduce: 0.5
+      eps: 1.0
+      nmax: 2000
+      uscale: [0.0, 0.05, 1.0]
+    wages:
+      maxstep: 0.2
+      stepreduce: 0.5
+      eps: 1.0
+      nmax: 2000
+      uscale: [0.0, 0.05, 1.0]
+  target:
+    data: qcew_balanced.csv 
+    stat_file: statistics.xlsx
+    stat_sheet: balanced
+  
+#########################################################
+process_qcew_bridge:  
+  target:
+    folder: target
+    file: qcew_bridge.xlsx
+    sheets: 
+      oind: qcew
+      split: ['previous', 'source', 'results']
+
+  rescale_factor: 1000000
+
+  total_area_code: 'US000'
+
+#########################################################
+process_naics_bridge:
+  source:
+    folder: naics
+    file: Use_SUT_Framework_2017_DET.xlsx
+    naics: 
+      sheet: 'NAICS Codes'
+      range: [D, 12, G, 1006]
+      columns: [sut, title, notes, qcew]
+    industries:
+      sheet: '2017'
+      range: [C, 5, 'ON', 6]
+      columns: [title, code]
+    wages: 
+      sheet: '2017'
+      range: [C, 410, 'ON', 410]
+      columns: [wages]
+ 
+  target:
+    folder: target
+    file: qcew_bridge.xlsx
+    sheets: 
+      bridge: bridge
+      sut: sut
+    
+  non_existent: ['11213']
+
+  duplicates: 
+    '23': ['233210', '233262', '2332A0', '233240', '2332C0', 
+    '233230', '2332D0', '233411', '233412', '2334A0', '230301',
+     '230302',]
+    '531': ['531HST', '531ORE']  
+
+  duplicate_match:
+    531HST: ['53111']
+    531ORE: ['5312', '5313', '53112', '53113', '53119']
+
+  reclassified:
+    '455': '452000'
+    '456': '446000'
+    '457': '447000'
+    '458': '448000'
+    '459': '4B0000'
+    '4491': '4B0000'
+    '4492': '4B0000'
+    '5132': '511200'
+    '5161': '515100'
+    '5162': '515200'
+    '51311': '511110'
+    '51312': '511120'
+    '51313': '511130'
+    '51314': '5111A0'
+    '51319': '5111A0'
+    '51921': '5191A0'
+    '51929': '519130'
+    '333248': '33329A'
+    '333310': '333318'
+    '333998': '33399A'
+    '335131': '335120'
+    '335132': '335120'
+    '335139': '335110'
+    '335910': '335911'
+    '337126': '33712N'
+    '517111': '517110'
+    '517112': '517210'
+    '51712': '517210'
+    '99': '813100'
+    '92': 'S00600' # administration allocated to nondefense federal
+
+
+#########################################################
+test_bridge:
+  target:
+    folder: target
+    file: statistics.xlsx
+    sheet: nonzero
+  
+
+#########################################################
+apply_bridge:
+  source:
+    folder: INTERNAL_PATH
+    file: construction.xlsx
+    # RECON2024: 'naics31' maps the 50 six-digit QCEW construction codes onto
+    # the 31 NAICS construction industries of the 421 axis (0/1 aggregation).
+    # RECON2022 used sheet 'static' (50 x 12 BEA structure types, D5:O54).
+    sheet: naics31
+    blocks:
+      data: [D, 5, AH, 54]
+      columns: [D, 3, AH, 3]
+      index: [B, 5, B, 54]
+
+  auto_truck:
+    qcew_id: '336110'
+    benchmark:
+      '336111': 0.3
+      '336112': 0.7
+
+  government:
+    GSLGO: # non-federal administration to 
+      - industry: 'S00600'
+        ownership: ['2', '3']
+    S00101: # federal electric utilities
+      - industry: '221100'
+        ownership: ['1']
+    S00202: # non-federal electric utilities
+      - industry: '221100'
+        ownership: ['1', '2', '3']
+    S00201: # transit
+      - industry: '485000'
+        ownership: ['2', '3']
+    GSLGE: # education
+      - industry: '611100'
+        ownership: ['1', '2', '3']
+      - industry: 611A00
+        ownership: ['1', '2', '3']
+      - industry: 611B00
+        ownership: ['1', '2', '3']
+    GSLGH: # health
+      - industry: '622000'
+        ownership: ['1', '2', '3']
+      - industry: 623A00
+        ownership: ['1', '2', '3']
+      - industry: '621400'
+        ownership: ['1', '2', '3']
+      - industry: '621900'
+        ownership: ['1', '2', '3']
+
+  statistics:
+    folder: target
+    file: qcew_bridge.xlsx
+    sheet: comparison
+
+  target:
+    folder: target
+    file: qcew_final.csv
+  

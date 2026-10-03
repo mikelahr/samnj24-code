@@ -1,0 +1,488 @@
+stage: bea
+
+dirs:
+  gdp: raw/SAGDP/
+  gdp_filled: raw/SAGDP/filled/
+  cainc_filled: raw/CAINC/filled/
+  proprietors: raw/Proprietors/
+  reference: RECON2024/reference_2022/process/BEA/
+  previous_process: RECON2024/process_{prev_year}/BEA/
+  qcew_raw: raw/QCEW/
+  sainc: raw/SAINC/
+  employment: raw/SAEMP_CAEMP/
+  county: raw/CAINC/
+  qcew: RECON2024/{process}/QCEW/
+  pce: raw/PCE/
+  benchmark: raw/SUT_benchmark/
+  target: RECON2024/{process}/BEA/
+  sut_process: RECON2024/{process}/SUT/
+  construction_io: Construction_IO_2024/outputs/
+  bea_emp_release: BEA_EMP/release_20260927/
+
+# RECON2024 status of each step (see RECON2024/README_RECON2024_port.md):
+#   process_structure / process_codes / process_data  - run as in 2022 on the
+#       2024 BEA files (SAGDP2/3/4/7 new vintage, CAINC5N/6N 2024). SAEMP25N /
+#       CAEMP25N end in 2022: their 2022 files are read for STRUCTURE only.
+#   balance_gdp     - REPLACED by import of raw/SAGDP/filled (MAP fill, done).
+#   balance_other   - REPLACED by import of raw/CAINC/filled (MAP fill, done).
+#   balance_employment - REPLACED by assemble_employment (to write): QCEW
+#       covered (all ownerships, filled) + uncovered W&S + proprietors + rail
+#       + farm + military, county x sector, controlled to state.
+#   process_pce_income - needs the 413-commodity PCE split re-run on SAPCE 2024
+#       (raw/PCE/final_work_PCE.g is the 2022 GAUSS code).
+steps:
+  # - process_structure
+  # - process_codes
+  # - process_data
+  - process_qcew
+  - process_proxies
+  - import_gdp_filled
+  - import_other_filled
+  - assemble_employment
+  - rebuild_pce_413   # RECON2024 v2 (adopted 2026-09-21; v1 was project_pce_413)
+  - process_pce_income
+  - apply_bridge
+
+#########################################################
+project_pce_413:
+  previous_year: {prev_year}
+  max_reldiff: 0.05
+  source:
+    folder: pce
+    pce_previous: final_results_413_commodities_by_state.xlsx
+    old_lines: PCE_state_gauss_div.txt
+    bottom: select_bottom_NIPA113_gauss.txt
+    bridge: bridge_PCE_USE_gauss.txt
+    sapce4: SAPCE4__ALL_AREAS_1997_2024.csv
+  target:
+    folder: target
+    file: pce_413_commodities_by_state_{year}.xlsx
+    sheet: 'final results 413 commodities b'
+
+#########################################################
+assemble_employment:
+  previous_year: {prev_year}
+  qcew_panel:                     # filled QCEW panel, by ownership (raw/QCEW)
+    folder: qcew_raw
+    source: qcew_source_
+    balanced: qcew_balanced_
+    suffix: .parquet
+  qcew_range_codes: ['31-33', '44-45', '48-49']   # QCEW's own 2-digit range codes
+  leaf_cover_min: 0.97
+  prop_collapse_ratio: 0.5
+  code_aliases:                   # BEA's SAEMP code for other transportation equipment is a typo
+    '3364-3466,3369': '3364-3366,3369'
+  proprietors:
+    folder: proprietors
+    # RECON2024 2026-09-27: BEA-jobs release inputs (raw/Proprietors/release_20260927/build_assemble_inputs.py)
+    uncovered: release_20260927/uncovered_ws_state_sector_2022_2024_release20260927.csv
+    county: release_20260927/prop_jobs_county_sector_2022_2024_release20260927.csv
+    state: release_20260927/prop_jobs_income_state_sector_2022_2024_release20260927.csv
+  state_sector_release:           # private nonfarm jobs by state x line, 2021-2024 (BEA_EMP/release_20260927)
+    folder: bea_emp_release
+    file: state_sector_private_nonfarm_jobs_2021_2024_2026-09-27_1535Z.csv
+  farm:
+    county: farm_panel/farm_proprietors_county_2001_2024.csv
+    county_ct: farm_panel/farm_proprietors_CT_planning_regions_2001_2024.csv
+    state: farm_panel/farm_proprietors_state_2001_2024.csv
+  military:
+    folder: county
+    file: CAINC6N__ALL_AREAS_2001_2024.csv
+    line: 2002
+  state_control:                  # BEA SAINC4 (state, through 2024): the published control
+    folder: sainc
+    file: SAINC4__ALL_AREAS_1929_2025.csv
+    lines:
+      total: 7010
+      wage_salary: 7020
+      proprietors: 7040
+  target:
+    folder: target
+    files:
+      county: 'bea_emp_c_balanced.csv'
+      state: 'bea_emp_s_balanced.csv'
+
+#########################################################
+import_gdp_filled:
+  source:
+    folder: gdp_filled
+    file: sagdp_comp_gos_filled_2022_2024.csv
+    columns:
+      wages: comp_filled
+      surplus: gos_filled
+      nettax: taxes_less_subsidies
+  target:
+    folder: target
+    file: 'bea_gdp_balanced.csv'
+
+#########################################################
+import_other_filled:
+  source:
+    folder: cainc_filled
+    file: bea_comp_earn_county_2024_filled.parquet
+    columns:
+      earnings: earnings_filled
+      compensation: compensation_filled
+  target:
+    folder: target
+    file: 'bea_other_balanced.csv'
+  
+
+#########################################################
+process_codes:
+  source:
+    folder: INTERNAL_PATH
+    file: bea_config.xlsx
+    codes:
+      region: region
+      base: base
+      gdp: gdp
+      state_emp: other
+      county_emp: cemp
+      earnings: other
+      compensation: other
+    bridge:
+      region_qcew_bridge: region_qcew
+      base_sut_bridge: base_sut
+      other_base_bridge: other_base
+      gdp_base_bridge: gdp_base
+        
+
+  # Alaska empty counties
+  remove_region_codes: ['02201', '02232', '02261', '02280']
+
+  target:
+    codes:
+      folder: target
+      file: 'bea_codes.xlsx'    
+      sheets: ['region', 'base', 'other', 'gdp', 'cemp']
+    bridge:
+      folder: target
+      file: 'bea_bridge.xlsx'    
+      sheets: ['region_qcew', 'base_sut', 'gdp_base', 'other_base',
+       'cemp_other']
+
+
+ 
+#########################################################
+process_structure:
+  source:
+    gdp_total: 
+      folder: gdp
+      file: SAGDP2__ALL_AREAS_1997_2025.csv
+    gdp_nettax: 
+      folder: gdp
+      file: SAGDP3__ALL_AREAS_1997_2024.csv
+    gdp_wages: 
+      folder: gdp
+      file: SAGDP4__ALL_AREAS_1997_2024.csv
+    gdp_surplus: 
+      folder: gdp
+      file: SAGDP7__ALL_AREAS_1997_2024.csv
+    state_emp: 
+      folder: employment
+      file: SAEMP25N__ALL_AREAS_1998_2022.csv
+      value_year: 2022     # discontinued after 2022: structure + 2022 values only
+    county_emp: 
+      folder: employment
+      file: CAEMP25N__ALL_AREAS_2001_2022.csv
+      value_year: 2022     # discontinued after 2022: structure + 2022 values only
+    earnings: 
+      folder: county
+      file: CAINC5N__ALL_AREAS_2001_2024.csv
+    compensation: 
+      folder: county
+      file: CAINC6N__ALL_AREAS_2001_2024.csv
+
+  region:
+    folder: qcew
+    file: classification_area.csv
+    
+  suffixes:
+    footnotes: __Footnotes.html
+    definition: __definition.xml
+
+  definition_columns:
+    line: Code
+    title: Description
+    comment: Definition
+
+  columns:
+    region_code: 'GeoFIPS'
+    region_title: 'GeoName'
+    sector_line: 'LineCode'
+    sector_code: 'IndustryClassification'
+    sector_title: 'Description'
+    unit: Unit
+    value: '{year}'
+
+  target:
+    folder: target
+    file: 'bea_structure.xlsx' 
+
+
+#########################################################
+process_data:
+  sector_bridge:
+    gdp_total: gdp 
+    gdp_nettax: gdp
+    gdp_wages: gdp
+    gdp_surplus: gdp
+    state_emp: other
+    county_emp: cemp
+    earnings: other
+    compensation: other    
+
+  overseas:
+    tables: [gdp_total, gdp_nettax, gdp_wages, gdp_surplus]
+    column: value
+    substitute:
+      '00000_101': ['00000_1', '00000_83'] # total
+      '00000_102': ['00000_84'] # civil
+      '00000_103': ['00000_85'] # military
+
+  combine_tables:
+    gdp: 
+      total: gdp_total
+      nettax: gdp_nettax
+      wages: gdp_wages
+      surplus: gdp_surplus
+    state_emp: 
+      total: state_emp
+    county_emp: 
+      total: county_emp
+    county_other: 
+      earnings: earnings
+      compensation: compensation
+
+  target:
+    folder: target
+    files:  
+      gdp: 'bea_gdp.csv'
+      state_emp: 'bea_emp_s.csv'
+      county_emp: 'bea_emp_c.csv'
+      county_other: 'bea_other.csv'
+
+
+#########################################################
+balance_gdp:
+  params:
+    maxstep: 0.2
+    stepreduce: 0.5
+    eps: 1.0
+    nmax: 1000
+    uscale: [0.0, 0.01, 1.0]
+
+  target:
+    folder: target
+    file: 'bea_gdp_balanced.csv'
+
+
+#########################################################
+balance_other:
+  params:
+    maxstep: 0.2
+    stepreduce: 0.5
+    eps: 1.0
+    nmax: 5000
+    uscale: [0.0, 1.0e-4, 1.0, 1.0]
+
+  set_nondisclosed: '516'
+
+  target:
+    folder: target
+    file: 'bea_other_balanced.csv'
+
+
+#########################################################
+balance_employment:
+  params:
+    maxstep: 0.2
+    stepreduce: 0.5
+    eps: 1.0
+    nmax: 5000
+    uscale: [0.0, 1.0e-4, 1.0, 1.0]
+
+  truncate_proxy: 
+    min: 1.2
+    max: 1.1
+
+  set_nondisclosed: '516'
+
+  target:
+    folder: target
+    files: 
+      county: 'bea_emp_c_balanced.csv'
+      state: 'bea_emp_s_balanced.csv'
+
+
+#########################################################
+process_qcew:
+  columns: ['establishments', 'employment', 'wages']
+
+  target:
+    folder: target
+    file: 'bea_qcew.csv'
+    
+
+#########################################################
+process_proxies:
+  columns: ['establishments', 'employment', 'wages']
+
+  select:
+    factor: 0.001
+    upper_bound: 4.0
+    lower_bound: 0.25
+
+  target:
+    folder: target
+    file: 'bea_proxies.csv'
+
+
+#########################################################
+process_pce_income:
+  source:
+    commodities:
+      folder: benchmark
+      file: Use_SUT_Framework_2017_DET.xlsx
+      sheet: '2017'
+      range: [A, 7, 'B', 408]
+      columns: [code, title]
+    pce:
+      folder: target          # RECON2024: written by rebuild_pce_413 (v1: project_pce_413)
+      file: 'pce_413_commodities_by_state_{year}_rebuild.xlsx'
+      sheet: 'final results 413 commodities b'
+      header: [0, 1]
+      index: [0, 1, 2]
+    income:
+      folder: county
+      file: CAINC4__ALL_AREAS_1969_2024.csv
+      fields:
+        income: '10'
+        population: '20'
+      select:
+        "GeoFIPS": "region_code"
+        "LineCode": "sector_code"
+        "{year}": "value"
+
+  target:
+    folder: target
+    file: 'pce_income.xlsx'
+    sheets: 
+      pce: False
+      regions: True
+      commodities: True
+
+
+#########################################################
+apply_bridge:
+  target:
+    folder: target
+    file: 'bea_bridged.csv'
+
+#########################################################
+# RECON2024 v2: GAUSS final_work_PCE.g logic rebuilt on {year} data (not yet
+# in the steps list; writes a separate file - switch process_pce_income to it
+# when adopted)
+rebuild_pce_413:
+  previous_year: {prev_year}
+  source:
+    folder: pce
+    pce_previous: final_results_413_commodities_by_state.xlsx
+    old_lines: PCE_state_gauss_div.txt
+    bridge: bridge_PCE_USE_gauss.txt
+    sapce4: SAPCE4__ALL_AREAS_1997_2024.csv
+  national:                 # national PCE by commodity, first file found
+    unit_factor: 1.0        # SUT PCE $M -> SAPCE4 / 413-file units ($M)
+    files:
+      - {folder: sut_process, file: sut_det_{year}_margins.xlsx, sheet: use_fin, column: pce}
+      - {folder: construction_io, file: Use_revised_NAICS421_{year}.csv, sheet: null, column: F01000}
+  ras:
+    nmax: 5000
+    eps: 1.0e-6
+  # old (product-based) bottom line -> current (function-based) SAPCE4 lines
+  # whose growth carries it; old 46 (net expenditures abroad, zero) has none
+  line_map:
+    '5': [55]
+    '6': [56]
+    '7': [58]
+    '9': [31, 32]
+    '10': [33]
+    '11': [34]
+    '12': [35]
+    '14': [75, 76]
+    '15': [80]
+    '16': [79]
+    '17': [90]
+    '18': [80]
+    '20': [119]
+    '21': [42]
+    '22': [96]
+    '23': [119]
+    '24': [67]
+    '27': [4]
+    '28': [5]
+    '29': [6]
+    '32': [10]
+    '33': [11]
+    '34': [12]
+    '35': [13, 17]
+    '37': [59]
+    '38': [29]
+    '40': [39]
+    '41': [80, 92]
+    '42': [36]
+    '43': [118]
+    '44': [127]
+    '45': [90]
+    '51': [20]
+    '52': [21]
+    '53': [22]
+    '54': [23]
+    '56': [25]
+    '58': [27]
+    '59': [28]
+    '62': [44]
+    '63': [45]
+    '64': [46]
+    '66': [51]
+    '67': [52]
+    '70': [60]
+    '71': [61]
+    '73': [63]
+    '74': [64]
+    '75': [65]
+    '77': [82]
+    '78': [77]
+    '79': [91]
+    '80': [92, 93, 94]
+    '83': [102]
+    '84': [103]
+    '85': [104]
+    '88': [107]
+    '89': [108]
+    '91': [110]
+    '92': [111]
+    '93': [112]
+    '94': [116]
+    '97': [71]
+    '98': [68]
+    '99': [72]
+    '101': [97]
+    '102': [98]
+    '103': [99]
+    '104': [121]
+    '105': [118, 14]
+    '106': [120]
+    '107': [36]
+    '109': [129]
+    '110': [130]
+    '112': [133]
+    '113': [134]
+  npish_lines: [112, 113]   # old gross output (+) and receipts (-) of NPISHs
+  npish_line_new: 132       # SAPCE4 NPISH final consumption expenditures
+  compare_with: pce_413_commodities_by_state_{year}.xlsx
+  target:
+    folder: target
+    file: pce_413_commodities_by_state_{year}_rebuild.xlsx
+    sheet: 'final results 413 commodities b'

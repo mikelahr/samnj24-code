@@ -1,0 +1,16 @@
+# run products -- rebuilt by run_samnj24.py
+output/
+# data, which lives in the Zenodo deposit, not in this repository
+data/
+# python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+# os / editor
+.DS_Store
+Thumbs.db
+*~
+.idea/
+.vscode/
