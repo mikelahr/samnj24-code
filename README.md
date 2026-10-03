@@ -10,7 +10,9 @@ the accounts reported in:
 > matrix for New Jersey 2024 with methods and sources for other U.S. states.
 > *Scientific Data* (submitted).
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23126216.svg)](https://doi.org/10.5281/zenodo.23126216)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23126170.svg)](https://doi.org/10.5281/zenodo.23126170)
+
+Release v1.0.0 is archived at https://doi.org/10.5281/zenodo.23126172
 
 ## What it builds
 
@@ -57,7 +59,7 @@ $0.000000 million.
 
 The inputs and the published matrices are archived at Zenodo:
 
-> https://doi.org/10.5281/zenodo.XXXXXXX
+> https://doi.org/10.5281/zenodo.23126215 (v1: 10.5281/zenodo.23126216)
 
 That deposit contains `data/national_sut_421/` (the 2024 national supply-use
 tables), `data/bridges/` (every concordance used), `data/nj/` (New Jersey's rows
